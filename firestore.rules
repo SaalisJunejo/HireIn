@@ -1,0 +1,44 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // User Profiles
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Providers
+    match /providers/{providerId} {
+      allow read: if true; // Public discovery
+      allow create: if request.auth != null;
+      // Providers can only update their own status, location, etc.
+      allow update: if request.auth != null && (
+        request.auth.uid == providerId || 
+        (resource.data.id == providerId && (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['isOnline', 'currentLat', 'currentLng', 'shifts'])))
+      );
+      allow delete: if false;
+    }
+    
+    // Bookings and Agent Logs
+    match /bookings/{bookingId} {
+      allow create: if request.auth != null;
+      allow read: if request.auth != null && (
+        request.auth.uid == resource.data.customerId || 
+        request.auth.uid == resource.data.providerId ||
+        request.auth.token.admin == true
+      );
+      allow update: if request.auth != null && (
+        request.auth.uid == resource.data.customerId || 
+        request.auth.uid == resource.data.providerId ||
+        request.auth.token.admin == true
+      );
+      allow delete: if request.auth != null && request.auth.token.admin == true;
+    }
+    
+    // Admin access override
+    match /{document=**} {
+      allow read, write: if request.auth != null && request.auth.token.admin == true;
+    }
+  }
+}

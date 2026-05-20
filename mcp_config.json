@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "hirein_bridge": {
+      "command": "node",
+      "args": [
+        "mcp_server/build/index.js"
+      ],
+      "env": {
+        "FIREBASE_PROJECT_HASH": "wsesv75pxa",
+        "FIREBASE_REGION": "uc"
+      }
+    }
+  }
+}
