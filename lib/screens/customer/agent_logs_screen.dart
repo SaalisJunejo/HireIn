@@ -42,97 +42,128 @@ class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTi
     super.dispose();
   }
 
-  Map<String, dynamic> _getMockLogs() {
+  Map<String, dynamic> _getDynamicLogs(Map<String, dynamic> doc) {
+    final bookingId = doc['bookingId'] ?? 'BK-MOCK';
+    final service = doc['service'] ?? 'AC Technician';
+    final customerAreaName = doc['customerAreaName'] ?? 'Latifabad';
+    final isUrgent = doc['isUrgent'] == true;
+    final providerId = doc['providerId'] ?? 'PROV-001';
+    final distanceKm = (doc['distanceKm'] ?? 1.2) as num;
+    final scheduledAt = doc['scheduledAt'] ?? DateTime.now().toIso8601String();
+    final createdAt = doc['createdAt'] ?? DateTime.now().toIso8601String();
+    final status = doc['status'] ?? 'booked';
+    
+    final pricing = doc['pricingBreakdown'] != null 
+        ? Map<String, dynamic>.from(doc['pricingBreakdown']) 
+        : {};
+    final baseFee = pricing['baseFee'] ?? 500;
+    final travelFee = pricing['travelFee'] ?? 100;
+    final urgentSurcharge = pricing['urgentSurcharge'] ?? 0;
+    final platformFee = pricing['platformFee'] ?? 50;
+    final total = pricing['total'] ?? 650;
+
+    final providerDoc = LocalDatabase.instance.get('providers', providerId);
+    final providerName = providerDoc?['name'] ?? 'Ali Ahmed';
+    final providerRating = providerDoc?['rating'] ?? 4.9;
+
     return {
       'Agent_1': {
         'name': 'Agent 1 — Intent Extractor',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(),
-        'input': 'User query: "Mujhe urgent AC technician chahiye Latifabad mein"',
-        'reasoning': 'Analyzing semantic keywords from mixed Roman Urdu/English input. Identified high-urgency token "urgent", service category target "AC technician", and geographical area "Latifabad" which maps directly to Latifabad sub-districts in Hyderabad, Sindh.',
-        'output': '{\n  "intent": "service_request",\n  "category": "AC Technician",\n  "urgency": "urgent",\n  "area": "Latifabad",\n  "city": "Hyderabad"\n}',
+        'timestamp': DateTime.parse(createdAt.toString()).toIso8601String(),
+        'input': 'User query: "Mujhe ${isUrgent ? 'urgent ' : ''}$service chahiye $customerAreaName mein"',
+        'reasoning': 'Analyzing semantic keywords from mixed Roman Urdu/English input. Identified target service category "$service", geographical area "$customerAreaName", and urgency status: ${isUrgent ? "URGENT" : "NORMAL"}.',
+        'output': '{\n  "intent": "service_request",\n  "category": "$service",\n  "urgency": "${isUrgent ? 'urgent' : 'normal'}",\n  "area": "$customerAreaName",\n  "city": "Hyderabad"\n}',
         'confidence': 98,
         'durationMs': 240,
       },
       'Agent_2': {
-        'name': 'Agent 2 — Geospatial Router',
+        'name': 'Agent 2 — Provider Discovery',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 5)).toIso8601String(),
-        'input': '{\n  "area": "Latifabad",\n  "city": "Hyderabad"\n}',
-        'reasoning': 'Resolving spatial boundaries for Latifabad, Hyderabad. Geocoding coordinates resolved to lat: 25.3710, lng: 68.3553. Establishing 5.0 km geofence search radius to index nearby active partner coordinates.',
-        'output': '{\n  "resolvedLat": 25.3710,\n  "resolvedLng": 68.3553,\n  "searchRadiusKm": 5.0,\n  "geohash": "tsg6u8"\n}',
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(milliseconds: 250)).toIso8601String(),
+        'input': '{\n  "service": "$service",\n  "lat": ${doc['customerLat'] ?? 25.3710},\n  "lng": ${doc['customerLng'] ?? 68.3553},\n  "searchRadiusKm": 5.0\n}',
+        'reasoning': 'Scanning geohash registers around coordinates (${doc['customerLat'] ?? 25.3710}, ${doc['customerLng'] ?? 68.3553}) for active, approved providers matching the category "$service".',
+        'output': '{\n  "success": true,\n  "providersFoundCount": 1,\n  "providers": [\n    {\n      "id": "$providerId",\n      "name": "$providerName",\n      "distanceKm": ${distanceKm.toStringAsFixed(1)},\n      "rating": $providerRating\n    }\n  ]\n}',
         'confidence': 95,
         'durationMs': 180,
       },
       'Agent_3': {
-        'name': 'Agent 3 — Discovery Engine',
+        'name': 'Agent 3 — Ranking Engine',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 4)).toIso8601String(),
-        'input': '{\n  "category": "AC Technician",\n  "lat": 25.3710,\n  "lng": 68.3553,\n  "radius": 5.0\n}',
-        'reasoning': 'Querying active provider registry. Scanning for online and approved partners matching "AC Technician" within the 5.0 km Latifabad geofence coordinates. Filtered out 2 suspended or inactive providers.',
-        'output': '{\n  "candidatesCount": 2,\n  "matchingProviders": [\n    {\n      "id": "PROV-001",\n      "name": "Ali Ahmed",\n      "distanceKm": 1.2,\n      "rating": 4.9,\n      "approvalStatus": "approved"\n    },\n    {\n      "id": "PROV-002",\n      "name": "Yasir AC Expert",\n      "distanceKm": 3.4,\n      "rating": 4.6,\n      "approvalStatus": "approved"\n    }\n  ]\n}',
-        'confidence': 100,
-        'durationMs': 310,
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(milliseconds: 450)).toIso8601String(),
+        'input': '{\n  "providers": [\n    {\n      "id": "$providerId",\n      "distanceKm": ${distanceKm.toStringAsFixed(1)},\n      "rating": $providerRating\n    }\n  ]\n}',
+        'reasoning': 'Applying multidimensional scoring matrix: rating (40%), proximity (40%), and historic reliability (20%). $providerName scores highest at 9.6/10 due to short distance (${distanceKm.toStringAsFixed(1)}km) and high rating ($providerRating).',
+        'output': '{\n  "rankedProviders": [\n    {\n      "id": "$providerId",\n      "name": "$providerName",\n      "score": 9.6,\n      "rank": 1\n    }\n  ]\n}',
+        'confidence': 97,
+        'durationMs': 210,
       },
       'Agent_4': {
-        'name': 'Agent 4 — Pricing & Bid Optimizer',
+        'name': 'Agent 4 — Pricing Engine',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 4)).toIso8601String(),
-        'input': '{\n  "providers": ["PROV-001", "PROV-002"],\n  "isUrgent": true\n}',
-        'reasoning': 'Running pricing optimization. Base rates PKR 500 loaded. Distance-based travel surcharges applied (PROV-001: PKR 100, PROV-002: PKR 150). Urgency fee premium (1.2x multiplier) added since search intent is "urgent". Calculating 10% platform cuts.',
-        'output': '{\n  "calculations": {\n    "PROV-001": {\n      "baseFeePkr": 500,\n      "travelFeePkr": 100,\n      "urgentSurchargePkr": 100,\n      "platformFeePkr": 70,\n      "totalPkr": 770\n    },\n    "PROV-002": {\n      "baseFeePkr": 480,\n      "travelFeePkr": 150,\n      "urgentSurchargePkr": 100,\n      "platformFeePkr": 73,\n      "totalPkr": 803\n    }\n  }\n}',
-        'confidence': 92,
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(milliseconds: 650)).toIso8601String(),
+        'input': '{\n  "providerId": "$providerId",\n  "distanceKm": ${distanceKm.toStringAsFixed(1)},\n  "isUrgent": $isUrgent\n}',
+        'reasoning': 'Calculating itemized PKR breakdown for $providerName. Base fee: PKR $baseFee. Travel allowance: PKR $travelFee. Urgent surcharge: PKR $urgentSurcharge. Platform fee: PKR $platformFee.',
+        'output': '{\n  "pricingBreakdown": {\n    "baseFee": $baseFee,\n    "travelFee": $travelFee,\n    "urgentSurcharge": $urgentSurcharge,\n    "platformFee": $platformFee,\n    "total": $total\n  }\n}',
+        'confidence': 100,
         'durationMs': 140,
       },
       'Agent_5': {
-        'name': 'Agent 5 — Availability Scheduler',
+        'name': 'Agent 5 — Matchmaker',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
-        'input': '{\n  "providers": ["PROV-001", "PROV-002"],\n  "date": "2026-05-18"\n}',
-        'reasoning': 'Scanning providers active shifts calendars and booked slots list for today. PROV-001 (Ali Ahmed) shifts cover 9am-12pm and 3pm-7pm (active currently). No conflicts found for both candidates.',
-        'output': '{\n  "availabilityMatrix": {\n    "PROV-001": {\n      "isShiftActive": true,\n      "hasConflicts": false,\n      "nextFreeSlot": "Immediate"\n    },\n    "PROV-002": {\n      "isShiftActive": true,\n      "hasConflicts": false,\n      "nextFreeSlot": "Immediate"\n    }\n  }\n}',
-        'confidence': 97,
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(milliseconds: 800)).toIso8601String(),
+        'input': '{\n  "rankedProviders": [\n    {\n      "id": "$providerId",\n      "score": 9.6\n    }\n  ],\n  "pricingResults": {\n    "total": $total\n  }\n}',
+        'reasoning': 'Evaluating final matchmaking recommendation. Selected provider $providerName ($providerRating stars, ${distanceKm.toStringAsFixed(1)}km away) for service "$service" with transparent price of PKR $total.',
+        'output': '{\n  "winner": {\n    "id": "$providerId",\n    "name": "$providerName",\n    "category": "$service",\n    "distanceKm": ${distanceKm.toStringAsFixed(1)},\n    "rating": $providerRating\n  },\n  "reasoningSummary": "Best match based on optimal rating, close proximity, and verified fee schedule of PKR $total."\n}',
+        'confidence': 99,
         'durationMs': 160,
       },
       'Agent_6': {
-        'name': 'Agent 6 — Ranking & Matching Model',
+        'name': 'Agent 6 — Booking Lock',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 3)).toIso8601String(),
-        'input': '{\n  "candidates": ["PROV-001", "PROV-002"],\n  "distances": {"PROV-001": 1.2, "PROV-002": 3.4},\n  "ratings": {"PROV-001": 4.9, "PROV-002": 4.6},\n  "prices": {"PROV-001": 770, "PROV-002": 803}\n}',
-        'reasoning': 'Applying ranking scores: proximity (40%), rating (30%), pricing (20%), on-time record (10%). Ali Ahmed (PROV-001) scores highest (9.4/10) due to extremely close range (1.2km) and superior customer feedback scores.',
-        'output': '{\n  "scoresList": [\n    {\n      "providerId": "PROV-001",\n      "score": 9.4,\n      "rank": 1\n    },\n    {\n      "providerId": "PROV-002",\n      "score": 8.1,\n      "rank": 2\n    }\n  ]\n}',
-        'confidence': 96,
-        'durationMs': 210,
-      },
-      'Agent_7': {
-        'name': 'Agent 7 — Booking & Lock Handler',
-        'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 2)).toIso8601String(),
-        'input': '{\n  "matchedProvider": "PROV-001",\n  "customerId": "CUST-99"\n}',
-        'reasoning': 'Acquiring high-speed transactional lock state in Firestore matching provider Ali Ahmed to protect schedule block against double-booking race conditions during final payment processing.',
-        'output': '{\n  "lockAcquired": true,\n  "providerLockState": "secured",\n  "expirationTime": "2026-05-18T09:37:50Z"\n}',
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(seconds: 1, milliseconds: 100)).toIso8601String(),
+        'input': '{\n  "bookingId": "$bookingId",\n  "providerId": "$providerId",\n  "timeSlot": "Immediate",\n  "isUrgent": $isUrgent\n}',
+        'reasoning': 'Checking provider schedule matrix. Acquiring database concurrency lock for $providerName on slot to prevent race conditions or double-booking conflicts.',
+        'output': '{\n  "lockAcquired": true,\n  "status": "booked",\n  "bookingId": "$bookingId"\n}',
         'confidence': 100,
         'durationMs': 90,
       },
-      'Agent_8': {
-        'name': 'Agent 8 — Dispatch & Notification Agent',
+      'Agent_7': {
+        'name': 'Agent 7 — Follow-Up',
         'status': 'completed',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 2)).toIso8601String(),
-        'input': '{\n  "bookingId": "BK-1234",\n  "providerId": "PROV-001"\n}',
-        'reasoning': 'Packaging job tokens, target client coordinates, and billing grids. Routing push alerts to Ali Ahmed\'s device endpoint. Simulated live Bykea drift tracker initialized.',
-        'output': '{\n  "dispatchStatus": "success",\n  "pushDelivered": true,\n  "partnerAcknowledgePending": true\n}',
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(seconds: 1, milliseconds: 300)).toIso8601String(),
+        'input': '{\n  "bookingId": "$bookingId",\n  "scheduledAt": "$scheduledAt"\n}',
+        'reasoning': 'Configuring automated cron handlers to dispatch three sequential user notification events (initial booking confirmation, provider en-route alert, and post-service feedback prompt).',
+        'output': '{\n  "remindersScheduled": 3,\n  "types": ["reminder", "en_route", "completion_prompt"]\n}',
         'confidence': 98,
         'durationMs': 110,
       },
+      'Agent_8': {
+        'name': 'Agent 8 — Review & Badges',
+        'status': status == 'completed' ? 'completed' : 'skipped',
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(seconds: 1, milliseconds: 450)).toIso8601String(),
+        'input': '{\n  "bookingId": "$bookingId",\n  "providerId": "$providerId",\n  "status": "$status"\n}',
+        'reasoning': status == 'completed' 
+            ? 'Processing completed service ratings and reviewing customer transaction logs to update provider and customer badge statistics.' 
+            : 'Booking lifecycle is currently "$status" and not yet completed. Skipping review telemetry.',
+        'output': status == 'completed'
+            ? '{\n  "reviewsUpdated": true,\n  "ratingAwarded": ${doc['rating'] ?? 5},\n  "badgesAssigned": ["Top Rated Customer"]\n}'
+            : '{\n  "reviewsUpdated": false,\n  "reason": "Booking is not completed"\n}',
+        'confidence': status == 'completed' ? 98 : 0,
+        'durationMs': status == 'completed' ? 120 : 0,
+      },
       'Agent_9': {
-        'name': 'Agent 9 — AI Dispute Resolver',
-        'status': 'skipped',
-        'timestamp': DateTime.now().subtract(const Duration(minutes: 1)).toIso8601String(),
-        'input': '{\n  "bookingId": "BK-1234",\n  "status": "completed"\n}',
-        'reasoning': 'Lifecycle review: Job completed successfully without user complaint filings. Conflict resolver skipped.',
-        'output': '{\n  "state": "inactive",\n  "reason": "No dispute raised"\n}',
-        'confidence': 0,
-        'durationMs': 0,
+        'name': 'Agent 9 — Dispute Resolution',
+        'status': status == 'disputed' ? 'completed' : 'skipped',
+        'timestamp': DateTime.parse(createdAt.toString()).add(const Duration(seconds: 1, milliseconds: 600)).toIso8601String(),
+        'input': '{\n  "bookingId": "$bookingId",\n  "status": "$status"\n}',
+        'reasoning': status == 'disputed' 
+            ? 'Dispute detected! Customer complaint: "${doc['reviewComment'] ?? 'Overcharged'}". Mediating agreed total PKR $total against billing records.' 
+            : 'No active dispute raised for booking. Auto-mediation bypassed.',
+        'output': status == 'disputed'
+            ? '{\n  "state": "resolved",\n  "refundIssued": true,\n  "decision": "Verified provider overcharge discrepancy. Partial refund of discrepancy difference credited back to customer."\n}'
+            : '{\n  "state": "inactive",\n  "reason": "No dispute raised"\n}',
+        'confidence': status == 'disputed' ? 95 : 0,
+        'durationMs': status == 'disputed' ? 250 : 0,
       },
     };
   }
@@ -171,7 +202,7 @@ class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTi
     if (doc == null) return;
 
     final dbLogs = doc['agentLogs'] != null ? Map<String, dynamic>.from(doc['agentLogs']) : {};
-    final mockLogs = _getMockLogs();
+    final mockLogs = _getDynamicLogs(doc);
     final logsMap = <String, dynamic>{};
     for (int i = 1; i <= 9; i++) {
       final key = 'Agent_$i';
@@ -268,7 +299,7 @@ class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTi
           }
 
           final dbLogs = doc['agentLogs'] != null ? Map<String, dynamic>.from(doc['agentLogs']) : {};
-          final mockLogs = _getMockLogs();
+          final mockLogs = _getDynamicLogs(doc);
           final logsMap = <String, dynamic>{};
           for (int i = 1; i <= 9; i++) {
             final key = 'Agent_$i';
