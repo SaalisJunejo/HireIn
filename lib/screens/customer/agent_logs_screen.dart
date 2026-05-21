@@ -4,13 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../services/local_database.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
-import 'package:go_router/go_router.dart';
-
 import '../../core/constants/app_colors.dart';
-import '../../core/constants/app_routes.dart';
-import '../../providers/auth_provider.dart';
-import '../../models/booking_model.dart';
-import '../../providers/booking_provider.dart';
 import '../../utils/demo_helper.dart';
 
 class AgentLogsScreen extends ConsumerStatefulWidget {
@@ -24,67 +18,28 @@ class AgentLogsScreen extends ConsumerStatefulWidget {
 
 class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTickerProviderStateMixin {
   TabController? _tabController;
-  bool _isLoading = true;
-  Map<String, dynamic>? _logs;
   String _targetBookingId = 'MOCK-BK';
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 9, vsync: this);
-    _loadLogs();
+    // Derive initial booking ID for the AppBar subtitle
+    if (widget.bookingId != null) {
+      _targetBookingId = widget.bookingId!;
+    } else {
+      final docs = LocalDatabase.instance.getAll('bookings');
+      if (docs.isNotEmpty) {
+        docs.sort((a, b) => DateTime.parse(b['createdAt']).compareTo(DateTime.parse(a['createdAt'])));
+        _targetBookingId = docs.first['bookingId'] ?? 'MOCK-BK';
+      }
+    }
   }
 
   @override
   void dispose() {
     _tabController?.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadLogs() async {
-    setState(() => _isLoading = true);
-    
-    // If a bookingId is provided, try to fetch its agentLogs from Firestore
-    if (widget.bookingId != null) {
-      try {
-        final doc = LocalDatabase.instance.get('bookings', widget.bookingId!);
-        if (doc != null && doc['agentLogs'] != null) {
-          if (mounted) {
-            setState(() {
-              _logs = Map<String, dynamic>.from(doc['agentLogs']);
-              _targetBookingId = widget.bookingId!;
-              _isLoading = false;
-            });
-          }
-          return;
-        }
-      } catch (_) {}
-    }
-
-    // Fallback: search for the most recent completed booking
-    try {
-      final docs = LocalDatabase.instance.getAll('bookings')
-        ..sort((a, b) => DateTime.parse(b['createdAt']).compareTo(DateTime.parse(a['createdAt'])));
-      if (docs.isNotEmpty && docs.first['agentLogs'] != null) {
-        if (mounted) {
-          setState(() {
-            _logs = Map<String, dynamic>.from(docs.first['agentLogs']);
-            _targetBookingId = docs.first['bookingId'];
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-    } catch (_) {}
-
-    // Ultimate Fallback: No logs available
-    if (mounted) {
-      setState(() {
-        _logs = null;
-        _targetBookingId = widget.bookingId ?? 'N/A';
-        _isLoading = false;
-      });
-    }
   }
 
   Map<String, dynamic> _getMockLogs() {
@@ -201,13 +156,34 @@ class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTi
   }
 
   void _shareAllLogs() {
-    if (_logs == null) return;
+    // Build merged logs from DB + mock fallback
+    Map<String, dynamic>? doc;
+    if (widget.bookingId != null) {
+      doc = LocalDatabase.instance.get('bookings', widget.bookingId!);
+    }
+    if (doc == null) {
+      final docs = LocalDatabase.instance.getAll('bookings');
+      if (docs.isNotEmpty) {
+        docs.sort((a, b) => DateTime.parse(b['createdAt']).compareTo(DateTime.parse(a['createdAt'])));
+        doc = docs.first;
+      }
+    }
+    if (doc == null) return;
+
+    final dbLogs = doc['agentLogs'] != null ? Map<String, dynamic>.from(doc['agentLogs']) : {};
+    final mockLogs = _getMockLogs();
+    final logsMap = <String, dynamic>{};
+    for (int i = 1; i <= 9; i++) {
+      final key = 'Agent_$i';
+      logsMap[key] = dbLogs[key] ?? mockLogs[key];
+    }
+
     final buffer = StringBuffer();
     buffer.writeln('========================================');
     buffer.writeln('HIREIN AI AGENT PIPELINE RUN - BOOKING: $_targetBookingId');
     buffer.writeln('========================================\n');
 
-    _logs!.forEach((key, value) {
+    logsMap.forEach((key, value) {
       final log = Map<String, dynamic>.from(value);
       buffer.writeln('----------------------------------------');
       buffer.writeln('Agent: ${log['name']}');
@@ -287,11 +263,17 @@ class _AgentLogsScreenState extends ConsumerState<AgentLogsScreen> with SingleTi
             doc = sorted.first;
           }
           
-          if (doc == null || doc['agentLogs'] == null) {
+          if (doc == null) {
             return const Center(child: Text('No telemetry logs generated yet.', style: TextStyle(color: Colors.white54, fontSize: 16)));
           }
 
-          final logsMap = Map<String, dynamic>.from(doc['agentLogs']);
+          final dbLogs = doc['agentLogs'] != null ? Map<String, dynamic>.from(doc['agentLogs']) : {};
+          final mockLogs = _getMockLogs();
+          final logsMap = <String, dynamic>{};
+          for (int i = 1; i <= 9; i++) {
+            final key = 'Agent_$i';
+            logsMap[key] = dbLogs[key] ?? mockLogs[key];
+          }
           
           return Column(
               children: [

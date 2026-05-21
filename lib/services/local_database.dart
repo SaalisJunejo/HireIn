@@ -85,12 +85,35 @@ class LocalDatabase {
     return _data[collection]!.values.where(where).toList();
   }
 
-  Stream<List<Map<String, dynamic>>> watch(String collection) {
+  StreamController<List<Map<String, dynamic>>> _getOrCreateController(String collection) {
     if (!_controllers.containsKey(collection)) {
-      _controllers[collection] = StreamController<List<Map<String, dynamic>>>.broadcast(
-        onListen: () => _broadcast(collection),
-      );
+      _controllers[collection] = StreamController<List<Map<String, dynamic>>>.broadcast();
     }
-    return _controllers[collection]!.stream;
+    return _controllers[collection]!;
+  }
+
+  Stream<List<Map<String, dynamic>>> watch(String collection) {
+    late StreamController<List<Map<String, dynamic>>> controller;
+    StreamSubscription<List<Map<String, dynamic>>>? subscription;
+
+    controller = StreamController<List<Map<String, dynamic>>>.broadcast(
+      onListen: () {
+        // Emit current value immediately
+        controller.add(getAll(collection));
+        
+        // Listen to the main updates
+        final mainStream = _getOrCreateController(collection).stream;
+        subscription = mainStream.listen((event) {
+          if (!controller.isClosed) {
+            controller.add(event);
+          }
+        });
+      },
+      onCancel: () {
+        subscription?.cancel();
+      },
+    );
+
+    return controller.stream;
   }
 }
